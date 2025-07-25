@@ -9,7 +9,6 @@
 #define RC_CH2_INPUT 3
 
 int i;
-String command = "";
 
 const int channel_val[2][4] = {
   { 1844, 1282, 1562, 10 },  //ch1 Up/Down Right 1
@@ -21,11 +20,17 @@ const int channel_val[2][4] = {
   // { 1898, 1318, 1602, 10 },  //ch7 Up/Down 2
   // { 1868, 1281, 1577, 10 }   //ch8 Left/Right Left 2
 };
-const int address_list[2] = {4,5};//RC_CH3_INPUT,RC_CH4_INPUT,RC_CH8_INPUT
-const int receiver_pin_list[2] = {RC_CH1_INPUT,RC_CH2_INPUT};//,RC_CH5_INPUT,RC_CH6_INPUT,RC_CH7_INPUT};
+struct CommandPacket{
+  char cmd;
+  short int speed;
+};
+CommandPacket c_packet;
+const int address_list[2] = {4,5};
+const int receiver_pin_list[2] = {RC_CH1_INPUT,RC_CH2_INPUT};
 AccelStepper stepper_cr(STEPPER_MODE,10,11);//Acts as stepper4
-int control_val[5] = {0,0,0,0,0};
+int control_val[2] = {0,0};
 int serialRate = 31250;
+
 void setup() {
   //Init's this as "Controller"/MASTER arduino to control 2 Shields
   Serial.begin(serialRate);
@@ -48,6 +53,7 @@ void setup() {
   
   //Stepper Driver is grounded already by wires -> No need to ground
 }
+/*
 void setAmp()
 {
   //Posibility to use this as one of the right sticks to demonstrate ampltiude sets
@@ -67,6 +73,8 @@ void setAmp()
   }
   stepper_cr.setSpeed(0);//Resets the speed
 }
+
+*/
 int convertValues(int controllerValue, int CHANNEL_NUM) {
   //goal: Probably, to convert all controller values into actual readable values for the speed from 0 - 100
   int MULT_VAL = 1000;
@@ -91,62 +99,44 @@ int convertValues(int controllerValue, int CHANNEL_NUM) {
   return (int)output_val * MULT_VAL;
 }
 void readControllerValues() {
-  //Serial Plotter should be used for this to measure and show values
-
   //Channels keep varying
   //---- Controller 1 ----
-  //Channel 1 = Right Stick -> Up/Down
-  //Channel 2 = Right Stick -> Left/Right
-  //Channel 3 = Left Stick -> Up/Down
-  //Channel 4 = Left Stick -> Left Right
+  //Channel 1 = Left Stick -> Up/Down
+  //Channel 2 = Left Stick -> Left/Right
+  //Channel 3 = Right Stick -> Up/Down
+  //Channel 4 = Right Stick -> Left Right
   //---- Controller 2 ----
   //Channel 5 = Left Stick -> Up/Down
   //Channel 6 = Right Stick -> Left/Right
   //Channel 7 = Right Stick -> Up/Down
   //Channel 8 = Left Stick -> Left/Right
   
-  int pulse_list[2] = {
-    pulseIn(RC_CH1_INPUT, HIGH),pulseIn(RC_CH2_INPUT, HIGH)
-  };
+  int pulse_list[2] = {pulseIn(RC_CH1_INPUT, HIGH),pulseIn(RC_CH2_INPUT, HIGH)};
   for(i=0;i<sizeof(pulse_list)/sizeof(pulse_list[0]);i++)
   {
-    //control_val[i] = pulse_list[i];
     control_val[i] = convertValues(pulse_list[i],i);
   }
-  // Serial.print("Channel_1:");Serial.print(control_val[0]);Serial.print(", ");
-  // Serial.print("Channel_2:");Serial.print(control_val[1]);Serial.println();
 }
 
 void moveControllerValues() {
   int dead_zone = 250.0;//25.0% deadzone changeable
-  String convSpeed="";
-  String w_command="";
   if (control_val[0] > dead_zone || control_val[0] < -dead_zone) {
-    convSpeed = String((int)control_val[0],3);
-    command = "S";
-  } else if (control_val[1] > dead_zone || control_val[1] < -dead_zone) {
-    convSpeed = String((int)control_val[1],3);
-    if(control_val[1] > 0)
-    {
-      command = "L";
-    }
-    if(control_val[1] < 0)
-    {
-      command = "R";
-    }
-    //EXTRA: TILTING???
+    c_packet.speed = control_val[0];
+    c_packet.cmd = "S";
+  }
+  else if (control_val[1] > dead_zone || control_val[1] < -dead_zone) {
+    c_packet.speed = control_val[1];
+    c_packet.cmd = 'T';
   }
   //Sees if there was any call to change
-  if(!convSpeed.equals(""))
+  // '\0' = null btw
+  if(c_packet.cmd!='\0')
   {
-    //Sends the proper command
-    w_command = command + convSpeed;
-    Serial.println(w_command);
     //This thing here takes forever specifically I2C transmission betweeen two arduinos
     for(i=0;i<sizeof(address_list)/sizeof(address_list[0]);i++)
     {
       Wire.beginTransmission(address_list[i]);
-      Wire.write(w_command.c_str());
+      Wire.write((uint8_t *)&c_packet, sizeof(c_packet));
       int result = Wire.endTransmission();
       if(result!=0)
       {

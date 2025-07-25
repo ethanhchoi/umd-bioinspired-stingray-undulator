@@ -6,7 +6,6 @@
 #define enPin 8
 //Goal of this Arduino: CNC Shield V3 - 1 - Left - Undamaged
 
-String readStr = "";//High leveled could change later
 const int stepPin_arr[4]= {2,3,4,12};
 const int dirPin_arr[4]= {5,6,7,13};
 AccelStepper stepper_1(STEPPER_MODE,stepPin_arr[0],dirPin_arr[0]);
@@ -21,6 +20,12 @@ float speed;
 float accel = 1000;
 int serialRate = 9600;
 
+struct CommandPacket{
+  char cmd;
+  short int speed;
+};
+CommandPacket r_packet;
+
 void setup() {
   Serial.begin(serialRate);
   Wire.begin(address);
@@ -32,60 +37,37 @@ void setup() {
     pinMode(stepPin_arr[i],OUTPUT);
     pinMode(dirPin_arr[i],OUTPUT);
     stepper_list[i]->setAcceleration(accel);
+    stepper_list[i]->moveTo(1000000);
+    stepper_list[i]->setMaxSpeed(1000);
+    stepper_list[i]->setSpeed(1000);
   }
-  //Configures with the ampltiude
+
   digitalWrite(enPin,LOW);//Enable Stepper Drivers
   Serial.println("Initialized the Code");
 }
-void readReq()
+void readReq(int numBytes)
 {
   //Reads in the Command
-  while(Wire.available())
+  if(numBytes == sizeof(r_packet))
   {
-    readStr += (char)Wire.read();
+    Wire.readBytes((char*)&r_packet,sizeof(r_packet));
   }
-  moveReq();
 }
 void moveReq()
 {
-  //If prevCommand = Current Command -> only change speed
-  
-  //Commands go up to 3 CHARS + Value
-  command = readStr.substring(0,3);
-  speed = readStr.substring(4).toDouble();
-  readStr="";//Resets command
-  if(command.equals("STR"))
+  if(r_packet.cmd=="S")
   {
     //Indicates goes straight
-    //Serial.println("Going Straight");Serial.println(speed);
-    straight(speed);
+    Serial.print("Straight:");
+    Serial.println(speed);
+    //straight(speed);
   }
-  else if(command.equals("LEF"))
+  else if(r_packet.cmd=="T")
   {
     //Indicates going left
-    //Serial.println("Going Left");Serial.println(speed);
-    left(speed);
+    Serial.print("Turn:");Serial.println(speed);
+    //turn(speed);
   }
-  else if(command.equals("RIG"))
-  {
-    //Indicates going right
-    //Serial.println("Going Right");Serial.println(speed);
-    right(speed);
-  }
-  // else if(command.equals("SET"))
-  // {
-  //   //Sets the Amplitude up
-  //   Serial.println("Setting fin");
-  //   // setAmp();
-  //   // //Set real speeds now
-  //   // int moveAmount = 100000000;
-  //   // for(i = 0 ; i < (sizeof(stepper_list)/(sizeof(stepper_list[0])) - 1); i++)
-  //   // {
-  //   //   stepper_list[i]->setMaxSpeed(1000);
-  //   //   stepper_list[i]->setSpeed(0); //Don't Set Speed yet let it sit at 0 so it doesn't move after undulation set
-  //   //   stepper_list[i]->moveTo(moveAmount);
-  //   // }
-  // }
 }
 void setAmp()
 {
@@ -123,22 +105,16 @@ void straight(double speed)
     stepper_list[i]->setSpeed(-speed);//Left size rotates the other way
   }
 }
-void left(double speed)
+void turn(float speed)
 {
   for(i=0;i<sizeof(stepper_list)/sizeof(stepper_list[0]);i++)
   {
     stepper_list[i]->setSpeed(speed);//Left size rotates the other way
   }
 }
-void right(double speed)
-{
-  for(i=0;i<sizeof(stepper_list)/sizeof(stepper_list[0]);i++)
-  {
-    stepper_list[i]->setSpeed(-speed);//Right size rotates straight
-  }
-}
 void loop() {
   //Constantly run the motors
+  moveReq();
   for(i=0;i<sizeof(stepper_list)/sizeof(stepper_list[0]);i++)
   {
     stepper_list[i]->run();
